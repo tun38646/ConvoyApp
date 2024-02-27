@@ -2,10 +2,12 @@ package edu.temple.convoy
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.location.Location
 import android.util.Log
 import com.android.volley.Request
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
+import com.google.android.gms.maps.model.LatLng
 import org.json.JSONObject
 
 class Helper {
@@ -51,6 +53,17 @@ class Helper {
             makeRequest(context, ENDPOINT_USER, params, response)
         }
 
+        fun update(context: Context, user: User, sessionKey: String, fcmToken: String, response: Response?) {
+            val params = mutableMapOf(
+                Pair("action", "UPDATE"),
+                Pair("username", user.username),
+                Pair("session_key", sessionKey),
+                Pair("fcm_token", fcmToken)
+            )
+
+            makeRequest(context, ENDPOINT_USER, params, response)
+        }
+
         fun createConvoy(context: Context, user: User, sessionKey: String, response: Response?) {
             val params = mutableMapOf(
                 Pair("action", "CREATE"),
@@ -66,6 +79,38 @@ class Helper {
                 Pair("username", user.username),
                 Pair("session_key", sessionKey),
                 Pair("convoy_id", convoyId)
+            )
+            makeRequest(context, ENDPOINT_CONVOY, params, response)
+        }
+
+        fun joinConvoy(context: Context, user:User, sessionKey: String, convoyId: String, response: Response?) {
+            val params = mutableMapOf(
+                Pair("action", "JOIN"),
+                Pair("username", user.username),
+                Pair("session_key", sessionKey),
+                Pair("convoy_id", convoyId)
+            )
+            makeRequest(context, ENDPOINT_CONVOY, params, response)
+        }
+
+        fun leaveConvoy(context: Context, user:User, sessionKey: String, convoyId: String, response: Response?) {
+            val params = mutableMapOf(
+                Pair("action", "LEAVE"),
+                Pair("username", user.username),
+                Pair("session_key", sessionKey),
+                Pair("convoy_id", convoyId)
+            )
+            makeRequest(context, ENDPOINT_CONVOY, params, response)
+        }
+
+        fun updateConvoy(context: Context, user:User, sessionKey: String, convoyId: String, latitude: String, longitude: String, response: Response?) {
+            val params = mutableMapOf(
+                Pair("action", "LEAVE"),
+                Pair("username", user.username),
+                Pair("session_key", sessionKey),
+                Pair("convoy_id", convoyId),
+                Pair("latitude", latitude),
+                Pair("longitude", longitude)
             )
             makeRequest(context, ENDPOINT_CONVOY, params, response)
         }

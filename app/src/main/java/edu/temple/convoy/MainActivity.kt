@@ -11,7 +11,6 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.location.Location
-import android.location.LocationManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -20,22 +19,15 @@ import android.os.Message
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,7 +39,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,15 +48,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.app.ActivityCompat
-import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
@@ -73,18 +59,18 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.tasks.OnCompleteListener
+import com.google.firebase.Firebase
+import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.messaging
+import com.google.maps.android.compose.AdvancedMarker
 import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
 import edu.temple.convoy.ui.theme.ConvoyTheme
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 class MainActivity : ComponentActivity() {
 
@@ -136,14 +122,15 @@ class MainActivity : ComponentActivity() {
             startLocationService()
         }
 
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && checkSelfPermission(
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            checkSelfPermission(Manifest.permission.FOREGROUND_SERVICE) != PackageManager.PERMISSION_GRANTED
         ) {
             requestPermissions(
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.FOREGROUND_SERVICE
                 ), 1
             )
         }
@@ -346,11 +333,11 @@ class MainActivity : ComponentActivity() {
                             null
                         ),
                         password
-                    ) { response ->
-                        if (Helper.api.isSuccess(response)) {
+                    ) { loginResponse ->
+                        if (Helper.api.isSuccess(loginResponse)) {
                             Helper.user.saveSessionData(
                                 context,
-                                response.getString("session_key")
+                                loginResponse.getString("session_key")
                             )
                             Helper.user.saveUser(
                                 context, User(
@@ -362,11 +349,20 @@ class MainActivity : ComponentActivity() {
                         } else {
                             Toast.makeText(
                                 context,
-                                Helper.api.getErrorMessage(response),
+                                Helper.api.getErrorMessage(loginResponse),
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
-                        navController.navigate("mainScreen")
+                        Helper.api.queryStatus(
+                            context,
+                            Helper.user.get(context),
+                            Helper.user.getSessionKey(context)!!
+                        ) { queryResponse ->
+                            if (Helper.api.isSuccess(queryResponse)) {
+                                convoyViewModel.setConvoyId(queryResponse.getString("convoy_id"))
+                            }
+                            navController.navigate("mainScreen")
+                        }
                     }
                 }
             }) {
@@ -378,6 +374,29 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun MainScreen(context: Context, navController: NavController) {
+        FirebaseMessaging.getInstance().token.addOnCompleteListener(OnCompleteListener { task ->
+            if (!task.isSuccessful) {
+                Log.d("MainScreen", "Fetching FCM token failed")
+            }
+
+            val token = task.result
+            Log.d("MainScreen", token)
+
+            Helper.user.getSessionKey(context)?.let { sessionKey ->
+                Helper.api.update(context, Helper.user.get(context), sessionKey, token) { response ->
+                    if (Helper.api.isSuccess(response)) {
+                        Helper.user.saveFcmToken(context, token)
+                    } else {
+                        Toast.makeText(
+                            context,
+                            Helper.api.getErrorMessage(response),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+        })
+
         Scaffold(
             topBar = {
                 CenterAlignedTopAppBar(
@@ -406,6 +425,7 @@ class MainActivity : ComponentActivity() {
                                 ) { response ->
                                     if (Helper.api.isSuccess(response)) {
                                         Helper.user.clearSessionData(context)
+                                        convoyViewModel.setConvoyId("")
                                     } else {
                                         Toast.makeText(
                                             context,
@@ -448,6 +468,9 @@ class MainActivity : ComponentActivity() {
                         }
                     }) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = "Start Convoy")
+                    }
+                    FloatingActionButton(onClick = { /*TODO*/ }) {
+
                     }
                     FloatingActionButton(onClick = {
                         Log.d("Convoy Id", convoyViewModel.getConvoyId().value!!)
@@ -496,14 +519,41 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("MissingPermission")
     @Composable
     fun MapComponent() {
-        val singapore = LatLng(1.35, 103.87)
-        val cameraPositionState = rememberCameraPositionState {
-            position = CameraPosition.fromLatLngZoom(singapore, 10f)
+        val context = LocalContext.current
+        val fusedLocationProviderClient =  remember {
+            LocationServices.getFusedLocationProviderClient(context)
         }
+        var lastKnownLocation by remember {
+            mutableStateOf<Location?>(null)
+        }
+        var deviceLatLng by remember {
+            mutableStateOf(LatLng(0.0, 0.0))
+        }
+        val cameraPositionState = rememberCameraPositionState {
+            position = CameraPosition.fromLatLngZoom(deviceLatLng, 10f)
+        }
+        val locationResult = fusedLocationProviderClient.lastLocation
+        locationResult.addOnCompleteListener(context as MainActivity) { task ->
+            if (task.isSuccessful) {
+                // Set the map's camera position to the current location of the device.
+                lastKnownLocation = task.result
+                deviceLatLng = LatLng(lastKnownLocation!!.latitude, lastKnownLocation!!.longitude)
+                cameraPositionState.position = CameraPosition.fromLatLngZoom(deviceLatLng, 18f)
+            } else {
+                Log.d("MapComponent", "Current location is null. Using defaults.")
+                Log.e("MapComponent", "Exception: %s", task.exception)
+            }
+        }
+
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState
-        )
+        ) {
+            AdvancedMarker(
+                state = MarkerState(position = deviceLatLng),
+                title = "You"
+            )
+        }
     }
 }
 

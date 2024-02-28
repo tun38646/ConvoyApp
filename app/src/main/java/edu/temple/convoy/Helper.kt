@@ -2,12 +2,10 @@ package edu.temple.convoy
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.location.Location
 import android.util.Log
 import com.android.volley.Request
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
-import com.google.android.gms.maps.model.LatLng
 import org.json.JSONObject
 
 class Helper {
@@ -152,6 +150,7 @@ class Helper {
         private val KEY_FIRSTNAME = "firstname"
         private val KEY_LASTNAME = "lastname"
         private val KEY_CONVOY_ID = "convoy_id"
+        private val KEY_FCM_TOKEN = "fcm_token"
 
         fun saveSessionData(context: Context, sessionKey: String) {
             getSP(context).edit()
@@ -189,6 +188,21 @@ class Helper {
 
         fun getConvoyId(context: Context): String? {
             return getSP(context).getString(KEY_CONVOY_ID, null)
+        }
+
+        fun saveFcmToken(context: Context, fcmToken: String) {
+            getSP(context).edit()
+                .putString(KEY_FCM_TOKEN, fcmToken)
+                .apply()
+        }
+
+        fun clearFcmToken(context: Context) {
+            getSP(context).edit().remove(KEY_FCM_TOKEN)
+                .apply()
+        }
+
+        fun getFcmToken(context: Context): String? {
+            return getSP(context).getString(KEY_FCM_TOKEN, null)
         }
 
         fun get(context: Context): User {

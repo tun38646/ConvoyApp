@@ -23,12 +23,18 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CardElevation
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -374,6 +380,10 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun MainScreen(context: Context, navController: NavController) {
+        var convoyId by remember {
+            mutableStateOf("")
+        }
+        
         FirebaseMessaging.getInstance().token.addOnCompleteListener(OnCompleteListener { task ->
             if (!task.isSuccessful) {
                 Log.d("MainScreen", "Fetching FCM token failed")
@@ -447,6 +457,7 @@ class MainActivity : ComponentActivity() {
             },
             floatingActionButton = {
                 Column {
+                    // FAB for starting convoy
                     FloatingActionButton(onClick = {
                         Helper.api.createConvoy(
                             context, Helper.user.get(context), Helper.user.getSessionKey(context)!!
@@ -469,9 +480,7 @@ class MainActivity : ComponentActivity() {
                     }) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = "Start Convoy")
                     }
-                    FloatingActionButton(onClick = { /*TODO*/ }) {
-
-                    }
+                    // FAB for ending convoy
                     FloatingActionButton(onClick = {
                         Log.d("Convoy Id", convoyViewModel.getConvoyId().value!!)
                         AlertDialog.Builder(context).setTitle("Close Convoy")
@@ -489,12 +498,13 @@ class MainActivity : ComponentActivity() {
                                         convoyViewModel.setConvoyId("")
                                         Helper.user.clearConvoyId(context)
                                         stopLocationService()
-                                    } else
+                                    } else {
                                         Toast.makeText(
                                             context,
                                             Helper.api.getErrorMessage(response),
                                             Toast.LENGTH_SHORT
                                         ).show()
+                                    }
                                 }
                             }
                             .setNegativeButton("Cancel") { p0, _ -> p0.cancel() }
@@ -502,16 +512,65 @@ class MainActivity : ComponentActivity() {
                     }) {
                         Icon(imageVector = Icons.Default.Close, contentDescription = "End Convoy")
                     }
-
                 }
             }
         ) { innerPadding ->
             Column(
                 modifier = Modifier
                     .padding(innerPadding),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                MapComponent()
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(500.dp)
+                ) {
+                    MapComponent()
+                }
+                Text(text = "Join Another Convoy")
+                OutlinedTextField(
+                    value = convoyId,
+                    onValueChange = { convoyId = it },
+                    label = { Text(text = "Convoy ID") }
+                )
+                Button(onClick = {
+                    Helper.user.getSessionKey(context)?.let { sessionKey ->
+                        Helper.api.joinConvoy(
+                            context, Helper.user.get(context), sessionKey, convoyId
+                        ) { response ->
+                            if (Helper.api.isSuccess(response)) {
+                                Log.d("MainScreen", response.toString())
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    Helper.api.getErrorMessage(response),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
+                }) {
+                    Text(text = "Join")
+                }
+                Button(onClick = {
+                    Helper.user.getSessionKey(context)?.let { sessionKey ->
+                        Helper.api.leaveConvoy(
+                            context, Helper.user.get(context), sessionKey, convoyId
+                        ) { response ->
+                            if (Helper.api.isSuccess(response)) {
+                                Log.d("MainScreen", response.toString())
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    Helper.api.getErrorMessage(response),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
+                }) {
+                    Text(text = "Leave")
+                }
             }
         }
     }

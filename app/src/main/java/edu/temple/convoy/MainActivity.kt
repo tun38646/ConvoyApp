@@ -247,51 +247,15 @@ class MainActivity : ComponentActivity() {
                 label = { Text(text = "Confirm Password") }
             )
             Button(onClick = {
-                if (username.isEmpty() || firstname.isEmpty() || lastname.isEmpty() || password.isEmpty() || confirmPassword.isEmpty()) {
-                    Toast.makeText(
-                        context,
-                        "Please fill in all fields",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else if (password != confirmPassword) {
-                    Toast.makeText(
-                        context,
-                        "Passwords do not match",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else {
-                    Helper.api.createAccount(
-                        context,
-                        User(
-                            username,
-                            firstname,
-                            lastname
-                        ),
-                        password
-                    ) { response ->
-                        if (Helper.api.isSuccess(response)) {
-                            Helper.user.saveSessionData(
-                                context,
-                                response.getString("session_key")
-                            )
-                            Helper.user.saveUser(
-                                context, User(
-                                    username,
-                                    firstname,
-                                    lastname
-                                )
-                            )
-                        } else {
-                            Toast.makeText(
-                                context,
-                                Helper.api.getErrorMessage(response),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                    navController.navigate("mainScreen")
-                }
-
+                register(
+                    context,
+                    navController,
+                    username,
+                    firstname,
+                    lastname,
+                    password,
+                    confirmPassword
+                )
             }) {
                 Text(text = "Register")
             }
@@ -324,53 +288,7 @@ class MainActivity : ComponentActivity() {
                 label = { Text(text = "Password") }
             )
             Button(onClick = {
-                if (username.isEmpty() || password.isEmpty()) {
-                    Toast.makeText(
-                        context,
-                        "Please fill in all fields",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else {
-                    Helper.api.login(
-                        context,
-                        User(
-                            username,
-                            null,
-                            null
-                        ),
-                        password
-                    ) { loginResponse ->
-                        if (Helper.api.isSuccess(loginResponse)) {
-                            Helper.user.saveSessionData(
-                                context,
-                                loginResponse.getString("session_key")
-                            )
-                            Helper.user.saveUser(
-                                context, User(
-                                    username,
-                                    null,
-                                    null
-                                )
-                            )
-                        } else {
-                            Toast.makeText(
-                                context,
-                                Helper.api.getErrorMessage(loginResponse),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                        Helper.api.queryStatus(
-                            context,
-                            Helper.user.get(context),
-                            Helper.user.getSessionKey(context)!!
-                        ) { queryResponse ->
-                            if (Helper.api.isSuccess(queryResponse)) {
-                                convoyViewModel.setConvoyId(queryResponse.getString("convoy_id"))
-                            }
-                            navController.navigate("mainScreen")
-                        }
-                    }
-                }
+                login(context, navController, username, password)
             }) {
                 Text(text = "Login")
             }
@@ -383,29 +301,38 @@ class MainActivity : ComponentActivity() {
         var convoyId by remember {
             mutableStateOf("")
         }
-        
-        FirebaseMessaging.getInstance().token.addOnCompleteListener(OnCompleteListener { task ->
-            if (!task.isSuccessful) {
-                Log.d("MainScreen", "Fetching FCM token failed")
-            }
 
-            val token = task.result
-            Log.d("MainScreen", token)
+        val isTokenRegistered = Helper.user.getFcmToken(context)
 
-            Helper.user.getSessionKey(context)?.let { sessionKey ->
-                Helper.api.update(context, Helper.user.get(context), sessionKey, token) { response ->
-                    if (Helper.api.isSuccess(response)) {
-                        Helper.user.saveFcmToken(context, token)
-                    } else {
-                        Toast.makeText(
-                            context,
-                            Helper.api.getErrorMessage(response),
-                            Toast.LENGTH_SHORT
-                        ).show()
+        if (isTokenRegistered == null) {
+            FirebaseMessaging.getInstance().token.addOnCompleteListener(OnCompleteListener { task ->
+                if (!task.isSuccessful) {
+                    Log.d("MainScreen", "Fetching FCM token failed")
+                }
+
+                val token = task.result
+
+                Helper.user.getSessionKey(context)?.let { sessionKey ->
+                    Helper.api.update(
+                        context,
+                        Helper.user.get(context),
+                        sessionKey,
+                        token
+                    ) { response ->
+                        if (Helper.api.isSuccess(response)) {
+                            Helper.user.saveFcmToken(context, token)
+                            Log.d("FCM Token", token)
+                        } else {
+                            Toast.makeText(
+                                context,
+                                Helper.api.getErrorMessage(response),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     }
                 }
-            }
-        })
+            })
+        }
 
         Scaffold(
             topBar = {
@@ -423,29 +350,7 @@ class MainActivity : ComponentActivity() {
                     },
                     actions = {
                         IconButton(onClick = {
-                            Helper.user.getSessionKey(context)?.let {
-                                Helper.api.logout(
-                                    context,
-                                    User(
-                                        Helper.user.get(context).username,
-                                        null,
-                                        null
-                                    ),
-                                    it
-                                ) { response ->
-                                    if (Helper.api.isSuccess(response)) {
-                                        Helper.user.clearSessionData(context)
-                                        convoyViewModel.setConvoyId("")
-                                    } else {
-                                        Toast.makeText(
-                                            context,
-                                            Helper.api.getErrorMessage(response),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                    navController.navigate("loginScreen")
-                                }
-                            }
+                            logout(context, navController)
                         }) {
                             Icon(
                                 imageVector = Icons.Default.ExitToApp,
@@ -459,56 +364,13 @@ class MainActivity : ComponentActivity() {
                 Column {
                     // FAB for starting convoy
                     FloatingActionButton(onClick = {
-                        Helper.api.createConvoy(
-                            context, Helper.user.get(context), Helper.user.getSessionKey(context)!!
-                        ) { response ->
-                            if (Helper.api.isSuccess(response)) {
-                                convoyViewModel.setConvoyId(response.getString("convoy_id"))
-                                Helper.user.saveConvoyId(
-                                    context,
-                                    convoyViewModel.getConvoyId().value!!
-                                )
-                                startLocationService()
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    Helper.api.getErrorMessage(response),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
+                        createConvoy(context)
                     }) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = "Start Convoy")
                     }
                     // FAB for ending convoy
                     FloatingActionButton(onClick = {
-                        Log.d("Convoy Id", convoyViewModel.getConvoyId().value!!)
-                        AlertDialog.Builder(context).setTitle("Close Convoy")
-                            .setMessage("Are you sure you want to close the convoy?")
-                            .setPositiveButton(
-                                "Yes"
-                            ) { _, _ ->
-                                Helper.api.closeConvoy(
-                                    context,
-                                    Helper.user.get(context),
-                                    Helper.user.getSessionKey(context)!!,
-                                    convoyViewModel.getConvoyId().value!!
-                                ) { response ->
-                                    if (Helper.api.isSuccess(response)) {
-                                        convoyViewModel.setConvoyId("")
-                                        Helper.user.clearConvoyId(context)
-                                        stopLocationService()
-                                    } else {
-                                        Toast.makeText(
-                                            context,
-                                            Helper.api.getErrorMessage(response),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                }
-                            }
-                            .setNegativeButton("Cancel") { p0, _ -> p0.cancel() }
-                            .show()
+                        endConvoy(context)
                     }) {
                         Icon(imageVector = Icons.Default.Close, contentDescription = "End Convoy")
                     }
@@ -534,40 +396,12 @@ class MainActivity : ComponentActivity() {
                     label = { Text(text = "Convoy ID") }
                 )
                 Button(onClick = {
-                    Helper.user.getSessionKey(context)?.let { sessionKey ->
-                        Helper.api.joinConvoy(
-                            context, Helper.user.get(context), sessionKey, convoyId
-                        ) { response ->
-                            if (Helper.api.isSuccess(response)) {
-                                Log.d("MainScreen", response.toString())
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    Helper.api.getErrorMessage(response),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    }
+                    joinConvoy(context, convoyId)
                 }) {
                     Text(text = "Join")
                 }
                 Button(onClick = {
-                    Helper.user.getSessionKey(context)?.let { sessionKey ->
-                        Helper.api.leaveConvoy(
-                            context, Helper.user.get(context), sessionKey, convoyId
-                        ) { response ->
-                            if (Helper.api.isSuccess(response)) {
-                                Log.d("MainScreen", response.toString())
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    Helper.api.getErrorMessage(response),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    }
+
                 }) {
                     Text(text = "Leave")
                 }
@@ -579,7 +413,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun MapComponent() {
         val context = LocalContext.current
-        val fusedLocationProviderClient =  remember {
+        val fusedLocationProviderClient = remember {
             LocationServices.getFusedLocationProviderClient(context)
         }
         var lastKnownLocation by remember {
@@ -591,18 +425,27 @@ class MainActivity : ComponentActivity() {
         val cameraPositionState = rememberCameraPositionState {
             position = CameraPosition.fromLatLngZoom(deviceLatLng, 10f)
         }
-        val locationResult = fusedLocationProviderClient.lastLocation
-        locationResult.addOnCompleteListener(context as MainActivity) { task ->
-            if (task.isSuccessful) {
-                // Set the map's camera position to the current location of the device.
-                lastKnownLocation = task.result
-                deviceLatLng = LatLng(lastKnownLocation!!.latitude, lastKnownLocation!!.longitude)
-                cameraPositionState.position = CameraPosition.fromLatLngZoom(deviceLatLng, 18f)
-            } else {
-                Log.d("MapComponent", "Current location is null. Using defaults.")
-                Log.e("MapComponent", "Exception: %s", task.exception)
-            }
+
+        var userLocation: LatLng? = LatLng(0.0, 0.0)
+
+        LaunchedEffect(context) {
+            userLocation = convoyViewModel.getLocation().value
         }
+        deviceLatLng = LatLng(userLocation!!.latitude, userLocation!!.longitude)
+        cameraPositionState.position = CameraPosition.fromLatLngZoom(deviceLatLng, 10f)
+
+//        val locationResult = fusedLocationProviderClient.lastLocation
+//        locationResult.addOnCompleteListener(context as MainActivity) { task ->
+//            if (task.isSuccessful) {
+//                // Set the map's camera position to the current location of the device.
+//                lastKnownLocation = task.result
+//                deviceLatLng = LatLng(lastKnownLocation!!.latitude, lastKnownLocation!!.longitude)
+//                cameraPositionState.position = CameraPosition.fromLatLngZoom(deviceLatLng, 18f)
+//            } else {
+//                Log.d("MapComponent", "Current location is null. Using defaults.")
+//                Log.e("MapComponent", "Exception: %s", task.exception)
+//            }
+//        }
 
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
@@ -612,6 +455,211 @@ class MainActivity : ComponentActivity() {
                 state = MarkerState(position = deviceLatLng),
                 title = "You"
             )
+        }
+    }
+
+    private fun register(
+        context: Context,
+        navController: NavController,
+        username: String,
+        firstname: String,
+        lastname: String,
+        password: String,
+        confirmPassword: String
+    ) {
+        if (username.isEmpty() || firstname.isEmpty() || lastname.isEmpty() || password.isEmpty() || confirmPassword.isEmpty()) {
+            Toast.makeText(
+                context,
+                "Please fill in all fields",
+                Toast.LENGTH_SHORT
+            ).show()
+        } else if (password != confirmPassword) {
+            Toast.makeText(
+                context,
+                "Passwords do not match",
+                Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            Helper.api.createAccount(
+                context,
+                User(
+                    username,
+                    firstname,
+                    lastname
+                ),
+                password
+            ) { response ->
+                if (Helper.api.isSuccess(response)) {
+                    Helper.user.saveSessionData(
+                        context,
+                        response.getString("session_key")
+                    )
+                    Helper.user.saveUser(
+                        context, User(
+                            username,
+                            firstname,
+                            lastname
+                        )
+                    )
+                } else {
+                    Toast.makeText(
+                        context,
+                        Helper.api.getErrorMessage(response),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            navController.navigate("mainScreen")
+        }
+    }
+
+    private fun login(
+        context: Context,
+        navController: NavController,
+        username: String,
+        password: String
+    ) {
+        if (username.isEmpty() || password.isEmpty()) {
+            Toast.makeText(
+                context,
+                "Please fill in all fields",
+                Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            Helper.api.login(
+                context,
+                User(
+                    username,
+                    null,
+                    null
+                ),
+                password
+            ) { loginResponse ->
+                if (Helper.api.isSuccess(loginResponse)) {
+                    Helper.user.saveSessionData(
+                        context,
+                        loginResponse.getString("session_key")
+                    )
+                    Helper.user.saveUser(
+                        context, User(
+                            username,
+                            null,
+                            null
+                        )
+                    )
+                    navController.navigate("mainScreen")
+                } else {
+                    Toast.makeText(
+                        context,
+                        Helper.api.getErrorMessage(loginResponse),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                Helper.api.queryStatus(
+                    context,
+                    Helper.user.get(context),
+                    Helper.user.getSessionKey(context)!!
+                ) { queryResponse ->
+                    if (Helper.api.isSuccess(queryResponse)) {
+                        convoyViewModel.setConvoyId(queryResponse.getString("convoy_id"))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun logout(context: Context, navController: NavController) {
+        Helper.user.getSessionKey(context)?.let {
+            Helper.api.logout(
+                context,
+                User(
+                    Helper.user.get(context).username,
+                    null,
+                    null
+                ),
+                it
+            ) { response ->
+                if (Helper.api.isSuccess(response)) {
+                    Helper.user.clearSessionData(context)
+                    convoyViewModel.setConvoyId("")
+                    Helper.user.clearFcmToken(context)
+                } else {
+                    Toast.makeText(
+                        context,
+                        Helper.api.getErrorMessage(response),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                navController.navigate("loginScreen")
+            }
+        }
+    }
+
+    private fun createConvoy(context: Context) {
+        Helper.api.createConvoy(
+            context, Helper.user.get(context), Helper.user.getSessionKey(context)!!
+        ) { response ->
+            if (Helper.api.isSuccess(response)) {
+                convoyViewModel.setConvoyId(response.getString("convoy_id"))
+                Helper.user.saveConvoyId(
+                    context,
+                    convoyViewModel.getConvoyId().value!!
+                )
+                startLocationService()
+            } else {
+                Toast.makeText(
+                    context,
+                    Helper.api.getErrorMessage(response),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun endConvoy(context: Context) {
+        AlertDialog.Builder(context).setTitle("Close Convoy")
+            .setMessage("Are you sure you want to close the convoy?")
+            .setPositiveButton(
+                "Yes"
+            ) { _, _ ->
+                Helper.api.closeConvoy(
+                    context,
+                    Helper.user.get(context),
+                    Helper.user.getSessionKey(context)!!,
+                    convoyViewModel.getConvoyId().value!!
+                ) { response ->
+                    if (Helper.api.isSuccess(response)) {
+                        convoyViewModel.setConvoyId("")
+                        Helper.user.clearConvoyId(context)
+                        stopLocationService()
+                    } else {
+                        Toast.makeText(
+                            context,
+                            Helper.api.getErrorMessage(response),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel") { p0, _ -> p0.cancel() }
+            .show()
+    }
+
+    private fun joinConvoy(context: Context, convoyId: String) {
+        Helper.user.getSessionKey(context)?.let { sessionKey ->
+            Helper.api.leaveConvoy(
+                context, Helper.user.get(context), sessionKey, convoyId
+            ) { response ->
+                if (Helper.api.isSuccess(response)) {
+                    Log.d("MainScreen", response.toString())
+                } else {
+                    Toast.makeText(
+                        context,
+                        Helper.api.getErrorMessage(response),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
         }
     }
 }

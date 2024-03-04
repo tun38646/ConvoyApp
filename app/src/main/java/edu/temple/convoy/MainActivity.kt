@@ -426,26 +426,26 @@ class MainActivity : ComponentActivity() {
             position = CameraPosition.fromLatLngZoom(deviceLatLng, 10f)
         }
 
-        var userLocation: LatLng? = LatLng(0.0, 0.0)
+//        var userLocation: LatLng? = LatLng(0.0, 0.0)
 
-        LaunchedEffect(context) {
-            userLocation = convoyViewModel.getLocation().value
-        }
-        deviceLatLng = LatLng(userLocation!!.latitude, userLocation!!.longitude)
-        cameraPositionState.position = CameraPosition.fromLatLngZoom(deviceLatLng, 10f)
-
-//        val locationResult = fusedLocationProviderClient.lastLocation
-//        locationResult.addOnCompleteListener(context as MainActivity) { task ->
-//            if (task.isSuccessful) {
-//                // Set the map's camera position to the current location of the device.
-//                lastKnownLocation = task.result
-//                deviceLatLng = LatLng(lastKnownLocation!!.latitude, lastKnownLocation!!.longitude)
-//                cameraPositionState.position = CameraPosition.fromLatLngZoom(deviceLatLng, 18f)
-//            } else {
-//                Log.d("MapComponent", "Current location is null. Using defaults.")
-//                Log.e("MapComponent", "Exception: %s", task.exception)
-//            }
+//        LaunchedEffect(context) {
+//            userLocation = convoyViewModel.getLocation().value
 //        }
+//        deviceLatLng = LatLng(userLocation!!.latitude, userLocation!!.longitude)
+//        cameraPositionState.position = CameraPosition.fromLatLngZoom(deviceLatLng, 10f)
+
+        val locationResult = fusedLocationProviderClient.lastLocation
+        locationResult.addOnCompleteListener(context as MainActivity) { task ->
+            if (task.isSuccessful) {
+                // Set the map's camera position to the current location of the device.
+                lastKnownLocation = task.result
+                deviceLatLng = LatLng(lastKnownLocation!!.latitude, lastKnownLocation!!.longitude)
+                cameraPositionState.position = CameraPosition.fromLatLngZoom(deviceLatLng, 18f)
+            } else {
+                Log.d("MapComponent", "Current location is null. Using defaults.")
+                Log.e("MapComponent", "Exception: %s", task.exception)
+            }
+        }
 
         GoogleMap(
             modifier = Modifier.fillMaxSize(),

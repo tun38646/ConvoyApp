@@ -1,5 +1,6 @@
 package edu.temple.convoy
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
@@ -51,17 +52,6 @@ class Helper {
             makeRequest(context, ENDPOINT_USER, params, response)
         }
 
-        fun update(context: Context, user: User, sessionKey: String, fcmToken: String, response: Response?) {
-            val params = mutableMapOf(
-                Pair("action", "UPDATE"),
-                Pair("username", user.username),
-                Pair("session_key", sessionKey),
-                Pair("fcm_token", fcmToken)
-            )
-
-            makeRequest(context, ENDPOINT_USER, params, response)
-        }
-
         fun createConvoy(context: Context, user: User, sessionKey: String, response: Response?) {
             val params = mutableMapOf(
                 Pair("action", "CREATE"),
@@ -77,6 +67,38 @@ class Helper {
                 Pair("username", user.username),
                 Pair("session_key", sessionKey),
                 Pair("convoy_id", convoyId)
+            )
+            makeRequest(context, ENDPOINT_CONVOY, params, response)
+        }
+
+        fun queryStatus(context: Context, user:User, sessionKey: String, response: Response?) {
+            val params = mutableMapOf(
+                Pair("action", "QUERY"),
+                Pair("username", user.username),
+                Pair("session_key", sessionKey),
+            )
+            makeRequest(context, ENDPOINT_CONVOY, params, response)
+        }
+
+        fun uploadToken(context: Context, user: User, sessionKey: String, token: String, response: Response?) {
+            val params = mutableMapOf(
+                Pair("action", "UPDATE"),
+                Pair("username", user.username),
+                Pair("session_key", sessionKey),
+                Pair("fcm_token", token)
+            )
+
+            makeRequest(context, ENDPOINT_USER, params, response)
+        }
+
+        fun updateLocation(context: Context, user:User, sessionKey: String, convoyId: String, latitude: String, longitude: String, response: Response?) {
+            val params = mutableMapOf(
+                Pair("action", "UPDATE"),
+                Pair("username", user.username),
+                Pair("session_key", sessionKey),
+                Pair("convoy_id", convoyId),
+                Pair("latitude", latitude),
+                Pair("longitude", longitude)
             )
             makeRequest(context, ENDPOINT_CONVOY, params, response)
         }
@@ -97,27 +119,6 @@ class Helper {
                 Pair("username", user.username),
                 Pair("session_key", sessionKey),
                 Pair("convoy_id", convoyId)
-            )
-            makeRequest(context, ENDPOINT_CONVOY, params, response)
-        }
-
-        fun updateConvoy(context: Context, user:User, sessionKey: String, convoyId: String, latitude: String, longitude: String, response: Response?) {
-            val params = mutableMapOf(
-                Pair("action", "LEAVE"),
-                Pair("username", user.username),
-                Pair("session_key", sessionKey),
-                Pair("convoy_id", convoyId),
-                Pair("latitude", latitude),
-                Pair("longitude", longitude)
-            )
-            makeRequest(context, ENDPOINT_CONVOY, params, response)
-        }
-
-        fun queryStatus(context: Context, user:User, sessionKey: String, response: Response?) {
-            val params = mutableMapOf(
-                Pair("action", "QUERY"),
-                Pair("username", user.username),
-                Pair("session_key", sessionKey),
             )
             makeRequest(context, ENDPOINT_CONVOY, params, response)
         }
@@ -150,7 +151,7 @@ class Helper {
         private val KEY_FIRSTNAME = "firstname"
         private val KEY_LASTNAME = "lastname"
         private val KEY_CONVOY_ID = "convoy_id"
-        private val KEY_FCM_TOKEN = "fcm_token"
+        private val KEY_TOKEN = "fcm_token"
 
         fun saveSessionData(context: Context, sessionKey: String) {
             getSP(context).edit()
@@ -190,21 +191,6 @@ class Helper {
             return getSP(context).getString(KEY_CONVOY_ID, null)
         }
 
-        fun saveFcmToken(context: Context, fcmToken: String) {
-            getSP(context).edit()
-                .putString(KEY_FCM_TOKEN, fcmToken)
-                .apply()
-        }
-
-        fun clearFcmToken(context: Context) {
-            getSP(context).edit().remove(KEY_FCM_TOKEN)
-                .apply()
-        }
-
-        fun getFcmToken(context: Context): String? {
-            return getSP(context).getString(KEY_FCM_TOKEN, null)
-        }
-
         fun get(context: Context): User {
             return User(
                 getSP(context).getString(KEY_USERNAME, "")!!,
@@ -213,8 +199,42 @@ class Helper {
             )
         }
 
+
+        fun saveToken(context: Context, fcmToken: String) {
+            getSP(context).edit()
+                .putString(KEY_TOKEN, fcmToken)
+                .apply()
+        }
+
+        @SuppressLint("ApplySharedPref")
+        fun clearToken(context: Context) {
+            getSP(context).edit()
+                .remove(KEY_TOKEN)
+                .commit()
+        }
+
+        private fun getToken(context: Context): String? {
+            return getSP(context).getString(KEY_TOKEN, null)
+        }
+
         private fun getSP(context: Context): SharedPreferences {
             return context.getSharedPreferences(SHARED_PREFERENCES_FILE, Context.MODE_PRIVATE)
+        }
+
+        fun registerTokenFlow(context: Context, token: String) {
+            if (getToken(context).isNullOrEmpty() && getSessionKey(context) != null) {
+                api.uploadToken(
+                    context,
+                    get(context),
+                    getSessionKey(context)!!,
+                    token,
+                    object : api.Response {
+                        override fun processResponse(response: JSONObject) {
+                            saveToken(context, token)
+                        }
+                    }
+                )
+            }
         }
     }
 }
